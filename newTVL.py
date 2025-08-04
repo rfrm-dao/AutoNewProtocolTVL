@@ -10,8 +10,9 @@ STATE_FILE = "notified_protocols.json"
 
 # Telegram Config
 USE_TELEGRAM = True
-BOT_TOKEN = os.getenv("8090344071:AAE_lHRB0FcLMgXQQ2uT91LlrbVIjFv_TKQ")
-CHAT_IDS = os.getenv("861088602", "1203838173", "5158958831").split(",")  # Replace with real IDs
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_IDS = os.getenv("TELEGRAM_CHAT_IDS", "").split(",")  # Now a list of 3 IDs
+
 
 
 def send_telegram_message(text):
