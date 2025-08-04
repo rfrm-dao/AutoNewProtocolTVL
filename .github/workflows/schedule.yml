@@ -1,0 +1,36 @@
+name: Derivatives TVL Alert to Telegram
+
+on:
+  schedule:
+    - cron: '0 8 * * 1-5'  # every 6 hours
+  workflow_dispatch:       # allow manual trigger
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run TVL alert script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}  # Comma-separated
+        run: python newTVL.py
+
+      - name: Commit updated state (if changed)
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add notified_protocols.json || true
+          git diff --cached --quiet || git commit -m "Update alert state"
+          git push
