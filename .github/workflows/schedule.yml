@@ -2,8 +2,7 @@ name: Derivatives TVL Alert to Telegram
 
 on:
   schedule:
-    - cron: '0 8 * * 1-5'  # every 6 hours
-  workflow_dispatch:       # allow manual trigger
+    - cron: '0 8 * * 1-5'  # every weekday 08:00 AM
 
 jobs:
   alert:
