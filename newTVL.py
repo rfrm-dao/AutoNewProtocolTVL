@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+import csv
 from datetime import datetime
 import subprocess
 
@@ -8,7 +9,7 @@ import subprocess
 TVL_THRESHOLD = 10_000_000
 CATEGORY_FILTER = "Derivatives"
 DEFI_LLAMA_URL = "https://api.llama.fi/protocols"
-STATE_FILE = "notified_protocols.json"
+STATE_FILE = "notified_protocols.csv"
 
 # === Telegram Config ===
 USE_TELEGRAM = True
@@ -40,19 +41,17 @@ def load_previous_alerts():
     if not os.path.exists(STATE_FILE):
         print("ℹ️ No existing alert state found.")
         return set()
-    with open(STATE_FILE, "r") as f:
-        try:
-            data = json.load(f)
-            return set(data)
-        except json.JSONDecodeError:
-            print("⚠️ State file corrupted, resetting.")
-            return set()
+    with open(STATE_FILE, "r", newline="", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        return {row[0] for row in reader if row}  # first column is protocol name
 
 
 def save_alerts(protocols):
-    with open(STATE_FILE, "w") as f:
-        json.dump(sorted(list(protocols)), f, indent=2)
-        print("💾 Updated alert state saved.")
+    with open(STATE_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        for name in sorted(protocols):
+            writer.writerow([name])
+    print("💾 Updated alert state saved.")
 
     # Commit to GitHub if running in Actions
     if os.getenv("GITHUB_ACTIONS") == "true":
