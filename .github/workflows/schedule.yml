@@ -1,6 +1,7 @@
 name: Derivatives TVL Alert to Telegram
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 8 * * 1-5'  # every weekday 08:00 AM
 
