@@ -2,6 +2,7 @@ import requests
 import json
 import os
 from datetime import datetime
+import subprocess
 
 # === Config ===
 TVL_THRESHOLD = 10_000_000
@@ -40,14 +41,26 @@ def load_previous_alerts():
         print("ℹ️ No existing alert state found.")
         return set()
     with open(STATE_FILE, "r") as f:
-        print("📁 Loaded previous alert state.")
-        return set(json.load(f))
+        try:
+            data = json.load(f)
+            return set(data)
+        except json.JSONDecodeError:
+            print("⚠️ State file corrupted, resetting.")
+            return set()
 
 
 def save_alerts(protocols):
     with open(STATE_FILE, "w") as f:
         json.dump(sorted(list(protocols)), f, indent=2)
         print("💾 Updated alert state saved.")
+
+    # Commit to GitHub if running in Actions
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        subprocess.run(["git", "config", "user.name", "github-actions"], check=True)
+        subprocess.run(["git", "config", "user.email", "github-actions@github.com"], check=True)
+        subprocess.run(["git", "add", STATE_FILE], check=True)
+        subprocess.run(["git", "commit", "-m", f"Update alerts {datetime.utcnow().isoformat()}"], check=False)
+        subprocess.run(["git", "push"], check=False)
 
 
 def check_derivatives_tvl():
@@ -76,10 +89,9 @@ def check_derivatives_tvl():
                     new_alerts.add(name)
 
         # Save updated alert state
-        all_alerts = alerted.union(new_alerts)
-        save_alerts(all_alerts)
-
-        if not new_alerts:
+        if new_alerts:
+            save_alerts(alerted.union(new_alerts))
+        else:
             print("✅ No new protocols crossed the threshold.")
 
     except Exception as e:
