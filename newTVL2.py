@@ -60,7 +60,6 @@ def load_protocol_history():
                 history[row["name"]] = {
                     "tvl": float(row["tvl"]),
                     "chain": row["chain"],
-                    "category": row["category"],
                     "first_seen": row["first_seen"],
                     "last_seen": row["last_seen"]
                 }
@@ -72,7 +71,7 @@ def load_protocol_history():
 def save_protocol_history(history):
     try:
         with open(HISTORY_FILE, "w", newline="", encoding="utf-8") as f:
-            fieldnames = ["name", "tvl", "chain", "category", "first_seen", "last_seen"]
+            fieldnames = ["name", "tvl", "chain", "first_seen", "last_seen"]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for name, data in history.items():
@@ -80,7 +79,6 @@ def save_protocol_history(history):
                     "name": name,
                     "tvl": data["tvl"],
                     "chain": data["chain"],
-                    "category": data["category"],
                     "first_seen": data["first_seen"],
                     "last_seen": data["last_seen"]
                 })
@@ -152,21 +150,18 @@ def check_new_protocols():
         if not name:
             continue
         tvl = protocol.get("tvl")
-        category = protocol.get("category", "")
         chain = protocol.get("chain", "N/A")
-        if category != CATEGORY_FILTER or not isinstance(tvl, (int, float)) or tvl < TVL_THRESHOLD:
-            continue
 
         if name in history:
             history[name]["tvl"] = tvl
             history[name]["last_seen"] = current_time
         else:
-            history[name] = {"tvl": tvl, "chain": chain, "category": category, "first_seen": current_time, "last_seen": current_time}
+            history[name] = {"tvl": tvl, "chain": chain, "first_seen": current_time, "last_seen": current_time}
 
         if name not in alerted:
             msg = (
                 f"🚨 New Derivative Protocol Alert!\n"
-                f"Name: {name}\nTVL: ${tvl:,.0f}\nChain: {chain}\nCategory: {category}"
+                f"Name: {name}\nTVL: ${tvl:,.0f}\nChain: {chain}\n"
             )
             print(msg)
             if USE_TELEGRAM:
@@ -185,9 +180,7 @@ def check_new_protocols():
 
     above_threshold = sum(
         1 for p in protocols
-        if p.get("category") == CATEGORY_FILTER and isinstance(p.get("tvl"), (int, float)) and p.get("tvl") >= TVL_THRESHOLD
-    )
-    print(f"📊 Total derivatives protocols above ${TVL_THRESHOLD:,}: {above_threshold}")
+           print(f"📊 Total derivatives protocols above ${TVL_THRESHOLD:,}: {above_threshold}")
 
     return history_saved and alerts_saved and commit_success
 
