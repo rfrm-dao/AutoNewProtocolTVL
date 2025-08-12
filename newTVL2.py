@@ -9,6 +9,7 @@ TVL_THRESHOLD = 10_000_000
 CATEGORY_FILTER = "Derivatives"
 DEFI_LLAMA_URL = "https://api.llama.fi/protocols"
 STATE_FILE = "notified_protocols.csv"
+HISTORY_FILE = "protocol_history.csv"
 
 # === Telegram Config ===
 USE_TELEGRAM = True
@@ -35,6 +36,7 @@ def send_telegram_message(text):
             print(f"❌ Exception while sending to {chat_id}: {e}")
 
 def load_previous_alerts():
+    """Load previously alerted protocols from state file"""
     if not os.path.exists(STATE_FILE):
         print("ℹ️ No existing alert state found.")
         return set()
@@ -42,20 +44,61 @@ def load_previous_alerts():
         reader = csv.reader(f)
         return {row[0] for row in reader if row}  # first column is protocol name
 
+def load_protocol_history():
+    """Load historical protocol data from CSV"""
+    history = {}
+    if not os.path.exists(HISTORY_FILE):
+        print("ℹ️ No protocol history file found.")
+        return history
+        
+    with open(HISTORY_FILE, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            history[row["name"]] = {
+                "tvl": float(row["tvl"]),
+                "chain": row["chain"],
+                "category": row["category"],
+                "first_seen": row["first_seen"],
+                "last_seen": row["last_seen"]
+            }
+    print(f"ℹ️ Loaded {len(history)} protocols from history")
+    return history
+
+def save_protocol_history(history):
+    """Save protocol history to CSV"""
+    with open(HISTORY_FILE, "w", newline="", encoding="utf-8") as f:
+        fieldnames = ["name", "tvl", "chain", "category", "first_seen", "last_seen"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for name, data in history.items():
+            writer.writerow({
+                "name": name,
+                "tvl": data["tvl"],
+                "chain": data["chain"],
+                "category": data["category"],
+                "first_seen": data["first_seen"],
+                "last_seen": data["last_seen"]
+            })
+    print(f"💾 Saved {len(history)} protocols to history")
+
 def save_alerts(protocols):
+    """Save alerted protocols to state file"""
     with open(STATE_FILE, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         for name in sorted(protocols):
             writer.writerow([name])
-    print("💾 Updated alert state saved.")
+    print("💾 Updated alert state saved")
 
-    # Commit to GitHub if running in Actions
+def commit_to_github():
+    """Commit changes to GitHub if running in Actions"""
     if os.getenv("GITHUB_ACTIONS") == "true":
         subprocess.run(["git", "config", "user.name", "github-actions"], check=True)
         subprocess.run(["git", "config", "user.email", "github-actions@github.com"], check=True)
-        subprocess.run(["git", "add", STATE_FILE], check=True)
-        subprocess.run(["git", "commit", "-m", f"Update alerts {datetime.utcnow().isoformat()}"], check=False)
+        subprocess.run(["git", "add", STATE_FILE, HISTORY_FILE], check=True)
+        commit_message = f"Update protocol data {datetime.utcnow().isoformat()}"
+        subprocess.run(["git", "commit", "-m", commit_message], check=False)
         subprocess.run(["git", "push"], check=False)
+        print("🚀 Changes pushed to GitHub")
 
 def fetch_protocols():
     """Fetch protocols from DeFiLlama API"""
@@ -71,17 +114,21 @@ def fetch_protocols():
 def check_new_protocols():
     """Check for new protocols crossing the TVL threshold"""
     alerted = load_previous_alerts()
+    history = load_protocol_history()
     protocols = fetch_protocols()
     new_alerts = set()
+    current_time = datetime.utcnow().isoformat()
     
     if not protocols:
         print("⚠️ No protocols fetched, exiting")
         return
         
+    # Update history with current data
     for protocol in protocols:
-        tvl = protocol.get("tvl")
         name = protocol.get("name", "")
+        tvl = protocol.get("tvl")
         category = protocol.get("category", "")
+        chain = protocol.get("chain", "N/A")
         
         # Skip if not in our target category
         if category != CATEGORY_FILTER:
@@ -91,19 +138,37 @@ def check_new_protocols():
         if not isinstance(tvl, (int, float)) or tvl < TVL_THRESHOLD:
             continue
             
-        # Check if we've already alerted for this protocol
-        if name not in alerted:
-            msg = f"🚨 New Derivative Protocol Alert!\n" \
-                  f"Name: {name}\n" \
-                  f"TVL: ${tvl:,.0f}\n" \
-                  f"Chain: {protocol.get('chain', 'N/A')}\n" \
-                  f"Category: {category}"
-            print(msg)
+        # Update protocol history
+        if name in history:
+            # Update existing entry
+            history[name]["tvl"] = tvl
+            history[name]["last_seen"] = current_time
+        else:
+            # Add new entry
+            history[name] = {
+                "tvl": tvl,
+                "chain": chain,
+                "category": category,
+                "first_seen": current_time,
+                "last_seen": current_time
+            }
             
-            if USE_TELEGRAM:
-                send_telegram_message(msg)
+            # Check if we need to alert
+            if name not in alerted:
+                msg = f"🚨 New Derivative Protocol Alert!\n" \
+                      f"Name: {name}\n" \
+                      f"TVL: ${tvl:,.0f}\n" \
+                      f"Chain: {chain}\n" \
+                      f"Category: {category}"
+                print(msg)
                 
-            new_alerts.add(name)
+                if USE_TELEGRAM:
+                    send_telegram_message(msg)
+                    
+                new_alerts.add(name)
+    
+    # Save data
+    save_protocol_history(history)
     
     if new_alerts:
         print(f"🎉 Found {len(new_alerts)} new protocols crossing the threshold!")
@@ -111,7 +176,10 @@ def check_new_protocols():
     else:
         print("✅ No new protocols crossed the threshold")
         
-    # Count protocols above threshold
+    # Commit changes to GitHub
+    commit_to_github()
+    
+    # Generate summary statistics
     above_threshold = sum(1 for p in protocols 
                          if p.get("category") == CATEGORY_FILTER 
                          and isinstance(p.get("tvl"), (int, float))
